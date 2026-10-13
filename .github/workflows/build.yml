@@ -1,0 +1,58 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: List project structure
+      run: |
+        ls -la
+        find . -name "*.xcodeproj" -o -name "*.xcworkspace" | head -20
+
+    - name: Build iOS App (unsigned)
+      run: |
+        PROJECT=$(find . -name "*.xcodeproj" -maxdepth 2 | head -1)
+        SCHEME=$(xcodebuild -project "$PROJECT" -list | grep -A 10 "Schemes:" | tail -n +2 | head -1 | xargs)
+        
+        echo "Building project: $PROJECT"
+        echo "Using scheme: $SCHEME"
+        
+        xcodebuild -project "$PROJECT" \
+          -scheme "$SCHEME" \
+          -sdk iphoneos \
+          -configuration Release \
+          -derivedDataPath build \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO
+
+    - name: Package IPA
+      run: |
+        APP_PATH=$(find build -name "*.app" -type d | head -1)
+        
+        if [ -z "$APP_PATH" ]; then
+          echo "No .app found"
+          exit 1
+        fi
+        
+        echo "Found app: $APP_PATH"
+        
+        mkdir Payload
+        cp -r "$APP_PATH" Payload/
+        zip -r DeepSeek.ipa Payload
+        rm -rf Payload
+
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: DeepSeek-iOS-IPA
+        path: DeepSeek.ipa
+        retention-days: 30
